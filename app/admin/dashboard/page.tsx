@@ -142,7 +142,7 @@ export default async function DashboardPage() {
       >
         <p
           className="font-serif text-lg font-semibold"
-          style={{ color: "#96A78D" }}
+          style={{ color: "#3D6B33" }}
         >
           Selamat datang di panel admin Invitela
         </p>

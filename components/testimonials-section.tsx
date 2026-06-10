@@ -98,7 +98,7 @@ export function TestimonialsSection({
   }, [isPaused, isInitialized])
 
   return (
-    <section id="testimoni" className="py-20 px-4">
+    <section id="testimonials" className="py-20 px-4">
       <div className="max-w-7xl mx-auto">
         {/* Heading */}
         <div className="text-center mb-14">

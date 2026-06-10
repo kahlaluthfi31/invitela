@@ -116,7 +116,7 @@ export function Sidebar({ mobileOpen, onClose }: SidebarProps) {
                       active
                         ? {
                             backgroundColor: "#D9E9CF",
-                            color: "#96A78D",
+                            color: "#3D6B33",
                           }
                         : { color: "#4a4a4a" }
                     }
@@ -124,7 +124,7 @@ export function Sidebar({ mobileOpen, onClose }: SidebarProps) {
                     <Icon
                       size={17}
                       className="shrink-0"
-                      style={active ? { color: "#96A78D" } : { color: "#6b7280" }}
+                      style={active ? { color: "#3D6B33" } : { color: "#6b7280" }}
                     />
                     {label}
                   </button>

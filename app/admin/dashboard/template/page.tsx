@@ -1,13 +1,14 @@
 "use client"
 
-import { useEffect, useState, useCallback } from "react"
-import { Pencil, ToggleLeft, ToggleRight } from "lucide-react"
-import { supabase } from "@/lib/supabase"
+import { useEffect, useState, useCallback, useRef, type ChangeEvent } from "react"
+import { Pencil, ToggleLeft, ToggleRight, Upload } from "lucide-react"
+import { supabase, uploadThumbnail } from "@/lib/supabase"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { Switch } from "@/components/ui/switch"
+import { Spinner } from "@/components/ui/spinner"
 import {
   Dialog,
   DialogContent,
@@ -36,7 +37,6 @@ type FormData = {
   slug: string
   harga: string
   badge: string
-  thumbnail: string
   kategori_id: string
   status: boolean
 }
@@ -90,10 +90,12 @@ export default function TemplatePage() {
     slug: "",
     harga: "",
     badge: "",
-    thumbnail: "",
     kategori_id: "",
     status: true,
   })
+  const [thumbnailUrl, setThumbnailUrl] = useState("")
+  const [uploadingThumbnail, setUploadingThumbnail] = useState(false)
+  const thumbnailInputRef = useRef<HTMLInputElement>(null)
   const [slugManual, setSlugManual] = useState(false)
   const [errors, setErrors] = useState<Partial<Record<keyof FormData, string>>>({})
   const [toast, setToast] = useState({ show: false, message: "", type: "success" as "success" | "error" })
@@ -145,12 +147,38 @@ export default function TemplatePage() {
       slug: item.slug,
       harga: String(item.harga),
       badge: item.badge ?? "",
-      thumbnail: item.thumbnail ?? "",
       kategori_id: item.kategori_id ?? "",
       status: item.status,
     })
+    setThumbnailUrl(item.thumbnail ?? "")
+    setUploadingThumbnail(false)
     setErrors({})
     setFormOpen(true)
+  }
+
+  async function handleThumbnailFile(file: File) {
+    const allowed = ["image/png", "image/jpeg", "image/webp"]
+    if (!allowed.includes(file.type)) {
+      showToast("Format harus PNG, JPEG, atau WebP", "error")
+      return
+    }
+
+    setUploadingThumbnail(true)
+    try {
+      const url = await uploadThumbnail(file)
+      setThumbnailUrl(url)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Gagal mengupload gambar"
+      showToast(message, "error")
+    } finally {
+      setUploadingThumbnail(false)
+      if (thumbnailInputRef.current) thumbnailInputRef.current.value = ""
+    }
+  }
+
+  function handleThumbnailInputChange(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (file) handleThumbnailFile(file)
   }
 
   function handleNamaChange(val: string) {
@@ -189,7 +217,7 @@ export default function TemplatePage() {
       slug: form.slug.trim(),
       harga: Number(form.harga),
       badge: form.badge.trim() || null,
-      thumbnail: form.thumbnail.trim() || null,
+      thumbnail: thumbnailUrl.trim() || null,
       kategori_id: form.kategori_id,
       status: form.status,
     }
@@ -436,25 +464,62 @@ export default function TemplatePage() {
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="t-thumbnail" className="text-sm font-medium text-gray-700">
-                Thumbnail URL <span className="text-gray-400 font-normal">(opsional)</span>
+              <Label className="text-sm font-medium text-gray-700">
+                Thumbnail <span className="text-gray-400 font-normal">(opsional)</span>
               </Label>
-              <Input
-                id="t-thumbnail"
-                value={form.thumbnail}
-                onChange={(e) => setField("thumbnail", e.target.value)}
-                placeholder="https://..."
-                style={{ borderColor: "rgba(150,167,141,0.35)" }}
+              <input
+                ref={thumbnailInputRef}
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                className="hidden"
+                onChange={handleThumbnailInputChange}
               />
-              {form.thumbnail && (
-                <img
-                  src={form.thumbnail}
-                  alt="Preview thumbnail"
-                  className="mt-1 max-h-[120px] w-auto object-contain rounded-md border"
-                  style={{ borderColor: "rgba(150,167,141,0.2)" }}
-                  onError={(e) => ((e.target as HTMLImageElement).style.display = "none")}
-                />
-              )}
+              <div
+                role="button"
+                tabIndex={0}
+                onClick={() => !uploadingThumbnail && thumbnailInputRef.current?.click()}
+                onKeyDown={(e) => {
+                  if ((e.key === "Enter" || e.key === " ") && !uploadingThumbnail) {
+                    e.preventDefault()
+                    thumbnailInputRef.current?.click()
+                  }
+                }}
+                className="flex items-center justify-center rounded-xl border-2 border-dashed cursor-pointer"
+                style={{
+                  height: "200px",
+                  backgroundColor: "#FAF9EE",
+                  borderColor: "rgba(150,167,141,0.3)",
+                }}
+              >
+                {uploadingThumbnail ? (
+                  <Spinner className="size-8 text-[#96A78D]" />
+                ) : thumbnailUrl ? (
+                  <div className="flex flex-col items-center justify-center gap-3 p-4">
+                    <img
+                      src={thumbnailUrl}
+                      alt="Preview thumbnail"
+                      className="max-h-[200px] object-contain rounded-lg"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="text-xs"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        thumbnailInputRef.current?.click()
+                      }}
+                    >
+                      Ganti
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center gap-2">
+                    <Upload size={32} className="text-[#96A78D]" />
+                    <span className="text-sm text-[#6b7280]">Klik untuk upload gambar</span>
+                  </div>
+                )}
+              </div>
             </div>
 
             <div className="flex items-center justify-between py-1">
@@ -476,7 +541,7 @@ export default function TemplatePage() {
             </Button>
             <Button
               onClick={handleSave}
-              disabled={saving}
+              disabled={saving || uploadingThumbnail}
               className="text-white"
               style={{ backgroundColor: "#96A78D" }}
             >
