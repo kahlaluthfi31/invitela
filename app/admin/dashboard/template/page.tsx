@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState, useCallback } from "react"
-import { Pencil, Trash2, Plus, ToggleLeft, ToggleRight } from "lucide-react"
+import { Pencil, ToggleLeft, ToggleRight } from "lucide-react"
 import { supabase } from "@/lib/supabase"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -17,7 +17,6 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog"
 
-// ── Types ──────────────────────────────────────────────────────────────────────
 type KategoriOption = { id: string; nama: string }
 
 type Template = {
@@ -29,7 +28,6 @@ type Template = {
   badge: string | null
   thumbnail: string | null
   status: boolean
-  created_at: string
   kategori?: { nama: string } | null
 }
 
@@ -43,17 +41,6 @@ type FormData = {
   status: boolean
 }
 
-const EMPTY_FORM: FormData = {
-  nama: "",
-  slug: "",
-  harga: "",
-  badge: "",
-  thumbnail: "",
-  kategori_id: "",
-  status: true,
-}
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
 function toSlug(str: string) {
   return str
     .toLowerCase()
@@ -61,6 +48,7 @@ function toSlug(str: string) {
     .replace(/[^a-z0-9\s-]/g, "")
     .replace(/\s+/g, "-")
     .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "")
 }
 
 function formatRupiah(value: number) {
@@ -71,7 +59,6 @@ function formatRupiah(value: number) {
   }).format(value)
 }
 
-// ── Toast ─────────────────────────────────────────────────────────────────────
 function Toast({ show, message, type }: { show: boolean; message: string; type: "success" | "error" }) {
   return (
     <div
@@ -90,7 +77,6 @@ function Toast({ show, message, type }: { show: boolean; message: string; type: 
   )
 }
 
-// ── Page ───────────────────────────────────────────────────────────────────────
 export default function TemplatePage() {
   const [list, setList] = useState<Template[]>([])
   const [kategoriOptions, setKategoriOptions] = useState<KategoriOption[]>([])
@@ -98,12 +84,18 @@ export default function TemplatePage() {
   const [saving, setSaving] = useState(false)
 
   const [formOpen, setFormOpen] = useState(false)
-  const [deleteOpen, setDeleteOpen] = useState(false)
   const [editTarget, setEditTarget] = useState<Template | null>(null)
-  const [deleteTarget, setDeleteTarget] = useState<Template | null>(null)
-  const [form, setForm] = useState<FormData>(EMPTY_FORM)
+  const [form, setForm] = useState<FormData>({
+    nama: "",
+    slug: "",
+    harga: "",
+    badge: "",
+    thumbnail: "",
+    kategori_id: "",
+    status: true,
+  })
+  const [slugManual, setSlugManual] = useState(false)
   const [errors, setErrors] = useState<Partial<Record<keyof FormData, string>>>({})
-
   const [toast, setToast] = useState({ show: false, message: "", type: "success" as "success" | "error" })
 
   const showToast = useCallback((message: string, type: "success" | "error") => {
@@ -111,24 +103,33 @@ export default function TemplatePage() {
     setTimeout(() => setToast((t) => ({ ...t, show: false })), 3000)
   }, [])
 
-  // ── Fetch ─────────────────────────────────────────────────────────────────
   const fetchData = useCallback(async () => {
     setFetching(true)
-    const [{ data: templates, error: tErr }, { data: kategori, error: kErr }] =
-      await Promise.all([
-        supabase
-          .from("templates")
-          .select("*, kategori(nama)")
-          .order("created_at", { ascending: false }),
-        supabase.from("kategori").select("id, nama").order("urutan"),
-      ])
 
-    if (!tErr && templates) setList(templates as Template[])
-    else if (tErr) console.warn("templates fetch:", tErr.message)
+    let templatesResult = await supabase
+      .from("templates")
+      .select("*, kategori(nama)")
+      .order("created_at", { ascending: false })
+
+    if (templatesResult.error?.message?.includes("created_at")) {
+      templatesResult = await supabase
+        .from("templates")
+        .select("*, kategori(nama)")
+        .order("id", { ascending: false })
+    }
+
+    const { data: kategori, error: kErr } = await supabase
+      .from("kategori")
+      .select("id, nama")
+      .order("urutan")
+
+    if (!templatesResult.error && templatesResult.data) {
+      setList(templatesResult.data as Template[])
+    } else if (templatesResult.error) {
+      console.warn("templates fetch:", templatesResult.error.message)
+    }
 
     if (!kErr && kategori) setKategoriOptions(kategori as KategoriOption[])
-    else if (kErr) console.warn("kategori fetch:", kErr.message)
-
     setFetching(false)
   }, [])
 
@@ -136,16 +137,9 @@ export default function TemplatePage() {
     fetchData()
   }, [fetchData])
 
-  // ── Open modals ───────────────────────────────────────────────────────────
-  function openAdd() {
-    setEditTarget(null)
-    setForm(EMPTY_FORM)
-    setErrors({})
-    setFormOpen(true)
-  }
-
   function openEdit(item: Template) {
     setEditTarget(item)
+    setSlugManual(false)
     setForm({
       nama: item.nama,
       slug: item.slug,
@@ -159,54 +153,48 @@ export default function TemplatePage() {
     setFormOpen(true)
   }
 
-  function openDelete(item: Template) {
-    setDeleteTarget(item)
-    setDeleteOpen(true)
-  }
-
-  // ── Form change ───────────────────────────────────────────────────────────
   function handleNamaChange(val: string) {
     setForm((prev) => ({
       ...prev,
       nama: val,
-      slug: editTarget ? prev.slug : toSlug(val),
+      slug: slugManual ? prev.slug : toSlug(val),
     }))
+  }
+
+  function handleSlugChange(val: string) {
+    setSlugManual(true)
+    setForm((prev) => ({ ...prev, slug: toSlug(val) }))
   }
 
   function setField<K extends keyof FormData>(key: K, val: FormData[K]) {
     setForm((prev) => ({ ...prev, [key]: val }))
   }
 
-  // ── Validate ──────────────────────────────────────────────────────────────
   function validate() {
     const e: Partial<Record<keyof FormData, string>> = {}
     if (!form.nama.trim()) e.nama = "Nama wajib diisi"
     if (!form.slug.trim()) e.slug = "Slug wajib diisi"
+    if (!form.kategori_id) e.kategori_id = "Kategori wajib dipilih"
+    if (!form.harga.trim() || Number(form.harga) <= 0) e.harga = "Harga wajib diisi"
     setErrors(e)
     return Object.keys(e).length === 0
   }
 
-  // ── Save ──────────────────────────────────────────────────────────────────
   async function handleSave() {
-    if (!validate()) return
+    if (!editTarget || !validate()) return
     setSaving(true)
 
     const payload = {
       nama: form.nama.trim(),
       slug: form.slug.trim(),
-      harga: Number(form.harga) || 0,
+      harga: Number(form.harga),
       badge: form.badge.trim() || null,
       thumbnail: form.thumbnail.trim() || null,
-      kategori_id: form.kategori_id || null,
+      kategori_id: form.kategori_id,
       status: form.status,
     }
 
-    let error
-    if (editTarget) {
-      ;({ error } = await supabase.from("templates").update(payload).eq("id", editTarget.id))
-    } else {
-      ;({ error } = await supabase.from("templates").insert(payload))
-    }
+    const { error } = await supabase.from("templates").update(payload).eq("id", editTarget.id)
 
     setSaving(false)
     if (error) {
@@ -214,14 +202,12 @@ export default function TemplatePage() {
     } else {
       setFormOpen(false)
       await fetchData()
-      showToast(editTarget ? "Template diperbarui" : "Template ditambahkan", "success")
+      showToast("Template diperbarui", "success")
     }
   }
 
-  // ── Toggle status ─────────────────────────────────────────────────────────
   async function handleToggleStatus(item: Template) {
     const newStatus = !item.status
-    // Optimistic
     setList((prev) =>
       prev.map((t) => (t.id === item.id ? { ...t, status: newStatus } : t))
     )
@@ -231,7 +217,6 @@ export default function TemplatePage() {
       .eq("id", item.id)
 
     if (error) {
-      // Rollback
       setList((prev) =>
         prev.map((t) => (t.id === item.id ? { ...t, status: item.status } : t))
       )
@@ -239,46 +224,19 @@ export default function TemplatePage() {
     }
   }
 
-  // ── Delete ────────────────────────────────────────────────────────────────
-  async function handleDelete() {
-    if (!deleteTarget) return
-    setSaving(true)
-    const { error } = await supabase.from("templates").delete().eq("id", deleteTarget.id)
-    setSaving(false)
-    if (error) {
-      showToast("Gagal menghapus. Coba lagi.", "error")
-    } else {
-      setDeleteOpen(false)
-      await fetchData()
-      showToast("Template dihapus", "success")
-    }
-  }
-
-  // ── Render ────────────────────────────────────────────────────────────────
   return (
     <>
-      {/* Heading */}
-      <div className="mb-8 flex items-center justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-semibold text-gray-800">Template</h1>
-          <p className="text-sm text-gray-400 mt-0.5">Kelola template undangan digital</p>
-        </div>
-        <Button
-          onClick={openAdd}
-          className="flex items-center gap-2 text-white text-sm font-medium"
-          style={{ backgroundColor: "#96A78D" }}
-        >
-          <Plus size={16} />
-          Tambah Template
-        </Button>
+      <div className="mb-8">
+        <h1 className="text-xl font-semibold text-gray-800">Template</h1>
+        <p className="text-sm text-gray-400 mt-0.5">
+          Edit metadata template undangan (file code di folder /templates/)
+        </p>
       </div>
 
-      {/* Table */}
       <div
         className="rounded-xl overflow-hidden"
         style={{ border: "1px solid rgba(150,167,141,0.2)" }}
       >
-        {/* Header */}
         <div
           className="grid grid-cols-[1.5fr_1fr_100px_80px_90px_110px] gap-3 px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider"
           style={{ backgroundColor: "#FAF9EE" }}
@@ -291,7 +249,6 @@ export default function TemplatePage() {
           <span className="text-right">Aksi</span>
         </div>
 
-        {/* Rows */}
         <div className="bg-white divide-y" style={{ borderColor: "rgba(150,167,141,0.12)" }}>
           {fetching ? (
             [1, 2, 3].map((i) => (
@@ -311,7 +268,9 @@ export default function TemplatePage() {
           ) : list.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 text-center px-6">
               <p className="text-sm font-medium text-gray-500">Belum ada template</p>
-              <p className="text-xs text-gray-400 mt-1">Klik "+ Tambah Template" untuk memulai</p>
+              <p className="text-xs text-gray-400 mt-1">
+                Template ditambahkan via file code di folder /templates/
+              </p>
             </div>
           ) : (
             list.map((item) => (
@@ -319,7 +278,6 @@ export default function TemplatePage() {
                 key={item.id}
                 className="grid grid-cols-[1.5fr_1fr_100px_80px_90px_110px] gap-3 px-5 py-3.5 items-center hover:bg-[#FAF9EE] transition-colors"
               >
-                {/* Nama */}
                 <div className="flex items-center gap-2.5 min-w-0">
                   {item.thumbnail && (
                     <img
@@ -332,15 +290,12 @@ export default function TemplatePage() {
                   <span className="text-sm font-medium text-gray-800 truncate">{item.nama}</span>
                 </div>
 
-                {/* Kategori */}
                 <span className="text-sm text-gray-500 truncate">
                   {item.kategori?.nama ?? <span className="text-gray-300">—</span>}
                 </span>
 
-                {/* Harga */}
                 <span className="text-sm text-gray-700">{formatRupiah(item.harga)}</span>
 
-                {/* Badge */}
                 <span>
                   {item.badge ? (
                     <Badge
@@ -354,7 +309,6 @@ export default function TemplatePage() {
                   )}
                 </span>
 
-                {/* Status */}
                 <span>
                   <Badge
                     className="border-0 text-[11px]"
@@ -364,16 +318,15 @@ export default function TemplatePage() {
                         : { backgroundColor: "#F3F4F6", color: "#6B7280" }
                     }
                   >
-                    {item.status ? "Aktif" : "Nonaktif"}
+                    {item.status ? "Show" : "Hide"}
                   </Badge>
                 </span>
 
-                {/* Aksi */}
                 <div className="flex items-center justify-end gap-1">
                   <button
                     onClick={() => handleToggleStatus(item)}
                     className="p-1.5 rounded-md text-gray-400 hover:text-[#96A78D] hover:bg-[#D9E9CF]/50 transition-colors"
-                    title={item.status ? "Nonaktifkan" : "Aktifkan"}
+                    title={item.status ? "Hide" : "Show"}
                   >
                     {item.status ? <ToggleRight size={16} /> : <ToggleLeft size={16} />}
                   </button>
@@ -384,13 +337,6 @@ export default function TemplatePage() {
                   >
                     <Pencil size={15} />
                   </button>
-                  <button
-                    onClick={() => openDelete(item)}
-                    className="p-1.5 rounded-md text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
-                    title="Hapus"
-                  >
-                    <Trash2 size={15} />
-                  </button>
                 </div>
               </div>
             ))
@@ -398,33 +344,28 @@ export default function TemplatePage() {
         </div>
       </div>
 
-      {/* ── Form Modal ── */}
       <Dialog open={formOpen} onOpenChange={setFormOpen}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>{editTarget ? "Edit Template" : "Tambah Template"}</DialogTitle>
-            <DialogDescription>
-              {editTarget ? "Ubah detail template." : "Isi detail template baru."}
-            </DialogDescription>
+            <DialogTitle>Edit Template</DialogTitle>
+            <DialogDescription>Ubah metadata template. File code tidak bisa diubah dari sini.</DialogDescription>
           </DialogHeader>
 
           <div className="flex flex-col gap-4 py-2 max-h-[60vh] overflow-y-auto pr-1">
-            {/* Nama */}
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="t-nama" className="text-sm font-medium text-gray-700">
-                Nama <span className="text-red-400">*</span>
+                Nama Template <span className="text-red-400">*</span>
               </Label>
               <Input
                 id="t-nama"
                 value={form.nama}
                 onChange={(e) => handleNamaChange(e.target.value)}
-                placeholder="contoh: Elegan Ivory"
+                placeholder="contoh: Vintage Sunset"
                 style={{ borderColor: errors.nama ? "#F87171" : "rgba(150,167,141,0.35)" }}
               />
               {errors.nama && <p className="text-xs text-red-500">{errors.nama}</p>}
             </div>
 
-            {/* Slug */}
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="t-slug" className="text-sm font-medium text-gray-700">
                 Slug <span className="text-red-400">*</span>
@@ -432,55 +373,55 @@ export default function TemplatePage() {
               <Input
                 id="t-slug"
                 value={form.slug}
-                onChange={(e) => setField("slug", toSlug(e.target.value))}
-                placeholder="elegan-ivory"
+                onChange={(e) => handleSlugChange(e.target.value)}
+                placeholder="vintage-sunset"
                 className="font-mono text-sm"
                 style={{ borderColor: errors.slug ? "#F87171" : "rgba(150,167,141,0.35)" }}
               />
               {errors.slug && <p className="text-xs text-red-500">{errors.slug}</p>}
+              <p className="text-xs text-gray-400">Auto-generate dari nama. Bisa diubah manual.</p>
             </div>
 
-            {/* Kategori */}
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="t-kategori" className="text-sm font-medium text-gray-700">
-                Kategori
+                Kategori <span className="text-red-400">*</span>
               </Label>
               <select
                 id="t-kategori"
                 value={form.kategori_id}
                 onChange={(e) => setField("kategori_id", e.target.value)}
                 className="w-full h-9 px-3 text-sm rounded-md border bg-[#FAFAF8] text-gray-700 outline-none focus:ring-2 focus:ring-[#96A78D]/40"
-                style={{ borderColor: "rgba(150,167,141,0.35)" }}
+                style={{ borderColor: errors.kategori_id ? "#F87171" : "rgba(150,167,141,0.35)" }}
               >
-                <option value="">— Tanpa kategori —</option>
+                <option value="">— Pilih kategori —</option>
                 {kategoriOptions.map((k) => (
                   <option key={k.id} value={k.id}>
                     {k.nama}
                   </option>
                 ))}
               </select>
+              {errors.kategori_id && <p className="text-xs text-red-500">{errors.kategori_id}</p>}
             </div>
 
-            {/* Harga */}
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="t-harga" className="text-sm font-medium text-gray-700">
-                Harga (Rp)
+                Harga (Rp) <span className="text-red-400">*</span>
               </Label>
               <Input
                 id="t-harga"
                 type="number"
-                min={0}
+                min={1}
                 value={form.harga}
                 onChange={(e) => setField("harga", e.target.value)}
                 placeholder="150000"
-                style={{ borderColor: "rgba(150,167,141,0.35)" }}
+                style={{ borderColor: errors.harga ? "#F87171" : "rgba(150,167,141,0.35)" }}
               />
-              {form.harga && (
+              {errors.harga && <p className="text-xs text-red-500">{errors.harga}</p>}
+              {form.harga && Number(form.harga) > 0 && (
                 <p className="text-xs text-gray-400">{formatRupiah(Number(form.harga))}</p>
               )}
             </div>
 
-            {/* Badge */}
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="t-badge" className="text-sm font-medium text-gray-700">
                 Badge <span className="text-gray-400 font-normal">(opsional)</span>
@@ -489,12 +430,11 @@ export default function TemplatePage() {
                 id="t-badge"
                 value={form.badge}
                 onChange={(e) => setField("badge", e.target.value)}
-                placeholder="contoh: Terlaris, Baru"
+                placeholder="contoh: -20%"
                 style={{ borderColor: "rgba(150,167,141,0.35)" }}
               />
             </div>
 
-            {/* Thumbnail */}
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="t-thumbnail" className="text-sm font-medium text-gray-700">
                 Thumbnail URL <span className="text-gray-400 font-normal">(opsional)</span>
@@ -506,12 +446,20 @@ export default function TemplatePage() {
                 placeholder="https://..."
                 style={{ borderColor: "rgba(150,167,141,0.35)" }}
               />
+              {form.thumbnail && (
+                <img
+                  src={form.thumbnail}
+                  alt="Preview thumbnail"
+                  className="mt-1 max-h-[120px] w-auto object-contain rounded-md border"
+                  style={{ borderColor: "rgba(150,167,141,0.2)" }}
+                  onError={(e) => ((e.target as HTMLImageElement).style.display = "none")}
+                />
+              )}
             </div>
 
-            {/* Status */}
             <div className="flex items-center justify-between py-1">
               <div>
-                <p className="text-sm font-medium text-gray-700">Status Aktif</p>
+                <p className="text-sm font-medium text-gray-700">Show / Hide</p>
                 <p className="text-xs text-gray-400">Template tampil di halaman publik</p>
               </div>
               <Switch
@@ -533,32 +481,6 @@ export default function TemplatePage() {
               style={{ backgroundColor: "#96A78D" }}
             >
               {saving ? "Menyimpan..." : "Simpan"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* ── Delete Confirm ── */}
-      <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
-        <DialogContent className="sm:max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Hapus Template</DialogTitle>
-            <DialogDescription>
-              Yakin ingin menghapus template{" "}
-              <span className="font-semibold text-gray-700">"{deleteTarget?.nama}"</span>?
-              Tindakan ini tidak bisa dibatalkan.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter className="mt-2">
-            <Button variant="outline" onClick={() => setDeleteOpen(false)} disabled={saving}>
-              Batal
-            </Button>
-            <Button
-              onClick={handleDelete}
-              disabled={saving}
-              className="bg-red-500 hover:bg-red-600 text-white"
-            >
-              {saving ? "Menghapus..." : "Hapus"}
             </Button>
           </DialogFooter>
         </DialogContent>
