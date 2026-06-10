@@ -14,6 +14,8 @@ const SECTIONS = [
     fields: [
       { key: "wa_admin", label: "Nomor WhatsApp", placeholder: "628xxxxxxxxxx" },
       { key: "instagram", label: "Instagram", placeholder: "@invitela" },
+      { key: "tiktok", label: "TikTok", placeholder: "@invitela" },
+      { key: "website", label: "Website", placeholder: "invitela.id" },
     ],
   },
   {

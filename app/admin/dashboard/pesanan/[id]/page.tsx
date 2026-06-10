@@ -9,8 +9,11 @@ import {
   PESANAN_SECTION_LABELS,
   PESANAN_STATUS_OPTIONS,
   PESANAN_STATUS_STYLES,
+  PEMBAYARAN_STATUS_OPTIONS,
+  PEMBAYARAN_STATUS_STYLES,
   defaultSectionData,
   type PesananStatus,
+  type PembayaranStatus,
   type PesananSectionType,
 } from "@/lib/pesanan-sections"
 import {
@@ -37,8 +40,7 @@ type PesananDetail = {
   nama_customer: string
   wa_customer: string
   status: PesananStatus
-  dp_paid: boolean
-  pelunasan_paid: boolean
+  pembayaran: PembayaranStatus
   created_at: string
   templates: {
     id: string
@@ -98,6 +100,7 @@ export default function PesananDetailPage() {
   const [sectionDrafts, setSectionDrafts] = useState<Record<string, SectionRecord>>({})
   const [fetching, setFetching] = useState(true)
   const [savingStatus, setSavingStatus] = useState(false)
+  const [savingPembayaran, setSavingPembayaran] = useState(false)
   const [savingSection, setSavingSection] = useState<Record<string, boolean>>({})
   const [copied, setCopied] = useState(false)
   const [toast, setToast] = useState({ show: false, message: "", type: "success" as "success" | "error" })
@@ -159,6 +162,24 @@ export default function PesananDetailPage() {
     } else {
       setPesanan((prev) => (prev ? { ...prev, status: statusDraft } : prev))
       showToast("Status berhasil diperbarui", "success")
+    }
+  }
+
+  async function handleUpdatePembayaran(newPembayaran: PembayaranStatus) {
+    if (!pesanan) return
+    setSavingPembayaran(true)
+
+    const { error } = await supabase
+      .from("pesanan")
+      .update({ pembayaran: newPembayaran })
+      .eq("id", pesanan.id)
+
+    setSavingPembayaran(false)
+    if (error) {
+      showToast(`Gagal update pembayaran: ${error.message}`, "error")
+    } else {
+      setPesanan((prev) => (prev ? { ...prev, pembayaran: newPembayaran } : prev))
+      showToast("Status pembayaran diperbarui", "success")
     }
   }
 
@@ -255,6 +276,7 @@ export default function PesananDetailPage() {
   }
 
   const statusStyle = PESANAN_STATUS_STYLES[pesanan.status] ?? PESANAN_STATUS_STYLES.baru
+  const pembayaranKey = (pesanan.pembayaran ?? "belum_bayar") as PembayaranStatus
   const inviteUrl =
     typeof window !== "undefined" ? `${window.location.origin}/undangan/${pesanan.slug}` : `/undangan/${pesanan.slug}`
 
@@ -272,6 +294,7 @@ export default function PesananDetailPage() {
         <p className="text-sm text-gray-400 mt-0.5 font-mono">{pesanan.slug}</p>
       </div>
 
+      {/* ── Info Pesanan ─────────────────────────────────────────────── */}
       <Card className="rounded-2xl shadow-none mb-6" style={{ border: "1px solid rgba(150,167,141,0.2)" }}>
         <CardContent className="p-6 flex flex-col gap-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -302,6 +325,7 @@ export default function PesananDetailPage() {
             </div>
           </div>
 
+          {/* ── Ubah Status ──────────────────────────────────────────── */}
           <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-end pt-2 border-t border-[rgba(150,167,141,0.12)]">
             <div className="flex-1 w-full sm:max-w-xs">
               <Label className="text-sm font-medium text-gray-600 mb-1.5 block">Ubah Status</Label>
@@ -328,6 +352,35 @@ export default function PesananDetailPage() {
             </Button>
           </div>
 
+          {/* ── Status Pembayaran ────────────────────────────────────── */}
+          <div className="pt-2 border-t border-[rgba(150,167,141,0.12)]">
+            <Label className="text-sm font-medium text-gray-600 mb-3 block">Status Pembayaran</Label>
+            <div className="flex flex-wrap gap-2">
+              {PEMBAYARAN_STATUS_OPTIONS.map((opt) => {
+                const style = PEMBAYARAN_STATUS_STYLES[opt]
+                const isActive = pembayaranKey === opt
+                return (
+                  <button
+                    key={opt}
+                    onClick={() => handleUpdatePembayaran(opt)}
+                    disabled={savingPembayaran}
+                    className="px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 border-2 cursor-pointer disabled:opacity-50"
+                    style={{
+                      backgroundColor: isActive ? style.bg : "#FAFAF8",
+                      color: isActive ? style.color : "#9CA3AF",
+                      borderColor: isActive ? style.color : "rgba(150,167,141,0.2)",
+                      boxShadow: isActive ? `0 0 0 1px ${style.color}20` : "none",
+                      transform: isActive ? "scale(1.02)" : "scale(1)",
+                    }}
+                  >
+                    {isActive && <span className="mr-1.5">●</span>}
+                    {style.label}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
           {pesanan.status === "fix" && (
             <div
               className="rounded-xl p-4 flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between"
@@ -351,6 +404,7 @@ export default function PesananDetailPage() {
         </CardContent>
       </Card>
 
+      {/* ── Section Undangan ──────────────────────────────────────────── */}
       <h2 className="text-sm font-semibold text-gray-700 mb-3">Section Undangan</h2>
 
       <Accordion type="multiple" className="space-y-3">

@@ -9,6 +9,7 @@ import {
   FolderOpen,
   SlidersHorizontal,
   ClipboardList,
+  BarChart3,
   Settings,
   LogOut,
   Menu,
@@ -22,6 +23,7 @@ const navItems = [
   { label: "Template", icon: Layout, href: "/admin/dashboard/template" },
   { label: "Kategori", icon: FolderOpen, href: "/admin/dashboard/kategori" },
   { label: "Pesanan", icon: ClipboardList, href: "/admin/dashboard/pesanan" },
+  { label: "Laporan", icon: BarChart3, href: "/admin/dashboard/laporan" },
   { label: "Pengaturan", icon: Settings, href: "/admin/dashboard/pengaturan" },
 ]
 

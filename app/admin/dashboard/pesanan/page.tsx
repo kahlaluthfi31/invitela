@@ -9,7 +9,10 @@ import {
   generatePesananSlug,
   createDefaultPesananSections,
   PESANAN_STATUS_STYLES,
+  PEMBAYARAN_STATUS_OPTIONS,
+  PEMBAYARAN_STATUS_STYLES,
   type PesananStatus,
+  type PembayaranStatus,
 } from "@/lib/pesanan-sections"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -33,8 +36,7 @@ type PesananRow = {
   nama_customer: string
   wa_customer: string
   status: PesananStatus
-  dp_paid: boolean
-  pelunasan_paid: boolean
+  pembayaran: PembayaranStatus
   created_at: string
   templates: { nama: string; thumbnail: string | null; harga: number } | null
 }
@@ -79,21 +81,6 @@ function formatDate(iso: string) {
     month: "short",
     year: "numeric",
   })
-}
-
-function PaymentBadge({ paid }: { paid: boolean }) {
-  return (
-    <Badge
-      className="border-0 text-[11px]"
-      style={
-        paid
-          ? { backgroundColor: "#D9E9CF", color: "#3D6B33" }
-          : { backgroundColor: "#F3F4F6", color: "#6B7280" }
-      }
-    >
-      {paid ? "Lunas" : "Belum"}
-    </Badge>
-  )
 }
 
 export default function PesananPage() {
@@ -170,8 +157,7 @@ export default function PesananPage() {
         nama_customer: form.nama_customer.trim(),
         wa_customer: form.wa_customer.trim(),
         status: "baru",
-        dp_paid: false,
-        pelunasan_paid: false,
+        pembayaran: "belum_bayar",
       })
       .select("id")
       .single()
@@ -198,6 +184,25 @@ export default function PesananPage() {
     router.push(`/admin/dashboard/pesanan/${inserted.id}`)
   }
 
+  async function handleUpdatePembayaran(pesananId: string, newStatus: PembayaranStatus) {
+    // Optimistic update
+    setList((prev) =>
+      prev.map((item) => (item.id === pesananId ? { ...item, pembayaran: newStatus } : item))
+    )
+
+    const { error } = await supabase
+      .from("pesanan")
+      .update({ pembayaran: newStatus })
+      .eq("id", pesananId)
+
+    if (error) {
+      showToast(`Gagal update pembayaran: ${error.message}`, "error")
+      fetchData() // Rollback
+    } else {
+      showToast("Status pembayaran diperbarui", "success")
+    }
+  }
+
   return (
     <>
       <div className="mb-8 flex items-center justify-between gap-4">
@@ -220,14 +225,13 @@ export default function PesananPage() {
         style={{ border: "1px solid rgba(150,167,141,0.2)" }}
       >
         <div
-          className="grid min-w-[900px] grid-cols-[1.2fr_1fr_100px_80px_100px_100px_90px] gap-3 px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider"
+          className="grid min-w-[900px] grid-cols-[1.2fr_1fr_100px_130px_100px_90px] gap-3 px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider"
           style={{ backgroundColor: "#FAF9EE" }}
         >
           <span>Customer</span>
           <span>Template</span>
           <span>Status</span>
-          <span>DP</span>
-          <span>Pelunasan</span>
+          <span>Pembayaran</span>
           <span>Tanggal</span>
           <span className="text-right">Aksi</span>
         </div>
@@ -237,9 +241,9 @@ export default function PesananPage() {
             [1, 2, 3].map((i) => (
               <div
                 key={i}
-                className="grid grid-cols-[1.2fr_1fr_100px_80px_100px_100px_90px] gap-3 px-5 py-4 items-center"
+                className="grid grid-cols-[1.2fr_1fr_100px_130px_100px_90px] gap-3 px-5 py-4 items-center"
               >
-                {[1, 2, 3, 4, 5, 6, 7].map((j) => (
+                {[1, 2, 3, 4, 5, 6].map((j) => (
                   <div
                     key={j}
                     className="h-4 rounded animate-pulse"
@@ -256,10 +260,12 @@ export default function PesananPage() {
           ) : (
             list.map((item) => {
               const statusStyle = PESANAN_STATUS_STYLES[item.status] ?? PESANAN_STATUS_STYLES.baru
+              const pembayaranKey = (item.pembayaran ?? "belum_bayar") as PembayaranStatus
+              const pembayaranStyle = PEMBAYARAN_STATUS_STYLES[pembayaranKey] ?? PEMBAYARAN_STATUS_STYLES.belum_bayar
               return (
                 <div
                   key={item.id}
-                  className="grid grid-cols-[1.2fr_1fr_100px_80px_100px_100px_90px] gap-3 px-5 py-3.5 items-center hover:bg-[#FAF9EE] transition-colors"
+                  className="grid grid-cols-[1.2fr_1fr_100px_130px_100px_90px] gap-3 px-5 py-3.5 items-center hover:bg-[#FAF9EE] transition-colors"
                 >
                   <div className="min-w-0">
                     <p className="text-sm font-medium text-gray-800 truncate">{item.nama_customer}</p>
@@ -276,8 +282,23 @@ export default function PesananPage() {
                       {statusStyle.label}
                     </Badge>
                   </span>
-                  <PaymentBadge paid={item.dp_paid} />
-                  <PaymentBadge paid={item.pelunasan_paid} />
+                  <span>
+                    <select
+                      value={pembayaranKey}
+                      onChange={(e) => handleUpdatePembayaran(item.id, e.target.value as PembayaranStatus)}
+                      className="h-7 px-2 text-[11px] font-medium rounded-md border-0 outline-none cursor-pointer transition-colors"
+                      style={{
+                        backgroundColor: pembayaranStyle.bg,
+                        color: pembayaranStyle.color,
+                      }}
+                    >
+                      {PEMBAYARAN_STATUS_OPTIONS.map((opt) => (
+                        <option key={opt} value={opt}>
+                          {PEMBAYARAN_STATUS_STYLES[opt].label}
+                        </option>
+                      ))}
+                    </select>
+                  </span>
                   <span className="text-sm text-gray-500">{formatDate(item.created_at)}</span>
                   <div className="flex justify-end">
                     <Link

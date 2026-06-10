@@ -51,6 +51,24 @@ export const PESANAN_STATUS_STYLES: Record<
   selesai: { bg: "#166534", color: "#FFFFFF", label: "Selesai" },
 }
 
+// ── Pembayaran Status ────────────────────────────────────────────────────────
+export const PEMBAYARAN_STATUS_OPTIONS = [
+  "belum_bayar",
+  "baru_dp",
+  "lunas",
+] as const
+
+export type PembayaranStatus = (typeof PEMBAYARAN_STATUS_OPTIONS)[number]
+
+export const PEMBAYARAN_STATUS_STYLES: Record<
+  PembayaranStatus,
+  { bg: string; color: string; label: string }
+> = {
+  belum_bayar: { bg: "#F3F4F6", color: "#6B7280", label: "Belum Bayar" },
+  baru_dp: { bg: "#FEF9C3", color: "#A16207", label: "Baru DP" },
+  lunas: { bg: "#D9E9CF", color: "#3D6B33", label: "Lunas" },
+}
+
 export function generatePesananSlug(nama: string): string {
   const base = nama
     .toLowerCase()
